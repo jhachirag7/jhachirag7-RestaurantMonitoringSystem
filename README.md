@@ -33,3 +33,14 @@ Once `pip` has finished downloading the dependencies:
 (env)$ cd project
 (env)$ python manage.py runserver
 ```
+
+### Routes:
+<img alt="routes" height="300" src="image/routes.png">
+
+### trigger_report:
+<img alt="trigger_report" height="300" src="image/trigger_report.png">
+
+### get_report:
+<img alt="get_report" height="300" src="image/get_report.png">
+
+
