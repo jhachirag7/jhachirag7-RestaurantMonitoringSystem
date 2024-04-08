@@ -37,9 +37,6 @@ from django.conf import settings
 def get_one_hour_data(store, utc_time, current_day, current_time):
     dict = {"uptime" : 0 , "downtime" : 0 }
 
-    store_open = store.business_hour.filter(day=current_day,start_time__lte=current_time,end_time__gte=current_time).exists()
-    if not store_open:
-        return dict
     last_one_hour = (store.status.filter(timestamp__gte=utc_time - datetime.timedelta(hours=1)) & store.status.filter(timestamp__lte=utc_time)).order_by('timestamp')
 
 
@@ -55,11 +52,13 @@ def get_one_hour_data(store, utc_time, current_day, current_time):
         # t=4 active                            t=4 active                               t=4 active
         # t=5 not business hour                 t=5 not business hour                    t=5 inactive
         # t=6 not business hour                 t=6 not business hour                    t=6 active
+        if current_day==log.timestamp.weekday():
             store_business_hours = store.business_hour.filter(
                 day=log.timestamp.weekday(),
                 start_time__lte=log.timestamp.time(),
                 end_time__gte=log.timestamp.time()
             ).exists()
+            
             if not store_business_hours: # not considering this log in both uptime and downtime since it was not in the business hour
                 last_status=-1
                 time=log.timestamp 
@@ -67,7 +66,7 @@ def get_one_hour_data(store, utc_time, current_day, current_time):
             if time==None:
                 time=log.timestamp
             diff=log.timestamp-time # if it's in business hour calculating difference in previous and current log timestamp that would either be downtime or uptime
-            if log.status == 1:
+            if last_status == 1:
                 dict["uptime"]+= diff.total_seconds()/60
             else:
                 dict["downtime"]+= diff.total_seconds()/60
@@ -92,9 +91,6 @@ def get_one_day_data(store, utc_time, current_day, current_time):
     dict = {"uptime" : 0 , "downtime" : 0}
     one_day_ago = current_day - 1
 
-    store_open = store.business_hour.filter(day__gte=one_day_ago,day__lte=current_day,start_time__lte=current_time,end_time__gte=current_time).exists()
-    if not store_open:
-        return dict
     
     last_one_day = (store.status.filter(timestamp__gte=utc_time - datetime.timedelta(days=1)) & store.status.filter(timestamp__lte=utc_time)).order_by('timestamp')
     time=None
@@ -115,7 +111,7 @@ def get_one_day_data(store, utc_time, current_day, current_time):
         if time==None:
             time=log.timestamp
         diff=log.timestamp-time # if it's in business hour calculating difference in previous and current log timestamp that would either be downtime or uptime
-        if log.status == 1:
+        if last_status == 1:
             dict["uptime"]+= diff.total_seconds()/3600
         else:
             dict["downtime"]+= diff.total_seconds()/3600
@@ -134,12 +130,10 @@ def get_one_week_data(store, utc_time, current_day, current_time):
     dict = {"uptime" : 0 , "downtime" : 0}
     one_week_ago = current_day - 7
 
-    is_store_open = store.business_hour.filter(day__gte=one_week_ago,day__lte=current_day,start_time__lte=current_time,end_time__gte=current_time).exists()
-    if not is_store_open:
-        return dict
     # getting all the logs in last one week
     last_one_week_logs = (store.status.filter(timestamp__gte=utc_time - datetime.timedelta(days=7))& store.status.filter(timestamp__lte=utc_time)).order_by('timestamp')
-    time=utc_time - datetime.timedelta(days=7)
+    time=None
+    last_status=None
     for log in last_one_week_logs:
        # checkig if store time overlap's with store business hours
         store_business_hours = store.business_hour.filter(
@@ -156,7 +150,7 @@ def get_one_week_data(store, utc_time, current_day, current_time):
         if time==None:
             time=log.timestamp
         diff=log.timestamp-time # if it's in business hour calculating difference in previous and current log timestamp that would either be downtime or uptime
-        if log.status == 1:
+        if last_status == 1:
             dict["uptime"]+= diff.total_seconds()/3600
         else:
             dict["downtime"]+= diff.total_seconds()/3600
@@ -196,18 +190,18 @@ def generate_report(store):
     data.extend(list(day_data.values()))
     data.extend(list(week_data.values()))
 
-    print(data)
-
     return data
 
 
 def generate_report_csv(report_data,report):
     file_name = f"{report.reportid}.csv"
     file_path = os.path.join(settings.BASE_DIR/'reports_csv', file_name)
+    #print(report.reportid)
     with open(file_path, "w", newline='') as csv_file:
             csv_writer = csv.writer(csv_file)
             csv_writer.writerow(["store_id", "last_one_hour uptime(in minutes)", "last_one_hour downtime(in minutes)", "last_one_day uptime(in hours)", "last_one_day downtime(in hours)", "last_one_week uptime(in hours)", "last_one_week downtime(in hours)"])
             for data in report_data:
+                #print(data)
                 csv_writer.writerow(data)
             
     report.report_url.save(file_name, open(file_path, "rb"))
